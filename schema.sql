@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS entries;
+CREATE TABLE entries (
+	id INTEGER PRIMARY KEY AUTO_INCREMENT,
+	path VARCHAR(255),
+	md5 VARCHAR(32),
+	comments VARCHAR(255),
+	deletable TINYINT(1)
+);

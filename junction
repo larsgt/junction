@@ -1,0 +1,92 @@
+#!/usr/bin/python
+
+import glob
+import hashlib
+import os, getopt, sys
+from storm.locals import *
+
+db = create_database("mysql://root@localhost:3306/junction_development")
+store = Store(db)
+
+class Entry(object):
+	__storm_table__ = "entries"
+	id         = Int(primary=True)
+	path       = Unicode()
+	md5        = Unicode()
+	comments   = Unicode()
+	deleteable = bool()
+
+def md5sum(filename):
+    md5 = hashlib.md5()
+    with open(filename,'rb') as f: 
+        for chunk in iter(lambda: f.read(128*md5.block_size), b''): 
+             md5.update(chunk)
+    return md5.hexdigest()
+
+
+def find_path(f):
+	path = os.path.abspath(f)
+	return store.find(Entry, Entry.path == unicode(path))
+
+def save(f):
+	e = Entry()
+	e.path = unicode(os.path.abspath(f))
+	e.md5  = unicode(md5sum(f))
+	store.add(e)
+
+def list(base):
+	for f in glob.glob("%s/*" % base):
+		res = find_path(f)
+		if res.count() == 0:
+			print "- %s" % f
+		else:
+			e = res.one()	
+			alert = ""
+			if os.path.getsize(f) < 1000000 and e.md5 != md5sum(f):
+				alert = "m"
+			print "+ %s\t%s\t%s\t%s" % (f, alert, e.md5, e.comments)
+
+
+def update_md5(base):
+	for f in glob.glob("%s/*" % base):
+		res = find_path(f)
+		if res.count() != 0:
+			e = res.one()
+			e.md5 = unicode(md5sum(f))
+			store.add(e)
+			store.flush()
+	store.commit()
+
+def comment(f, comment):
+	res = find_path(f)
+	if res.count() == 0:
+		print "%s: does not exist in system, please add" % f
+	else:
+		e = res.one()
+		e.comments = unicode(comment)
+		store.add(e)
+		store.flush()
+		store.commit()
+	
+
+def update():
+	for f in glob.glob("*"):
+		if find_path(f).count() == 0 and os.path.isfile(f):
+			save(f)
+	store.flush()
+	store.commit()
+
+
+def main():
+	if len(sys.argv) > 1 and sys.argv[1] == '-a':
+		update()
+	elif len(sys.argv) > 1 and sys.argv[1] == '-m':
+		update_md5(".")
+	elif len(sys.argv) > 1 and sys.argv[1] == '-c':
+		comment(sys.argv[2], sys.argv[3])
+	elif len(sys.argv) == 2:
+		list(sys.argv[1])
+	else:	
+		list(".")
+main()
+
